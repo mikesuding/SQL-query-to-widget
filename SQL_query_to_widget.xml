@@ -1,0 +1,686 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<feed  version="1.0" hasPendingRequests="false" >
+  <company></company>
+  <status>200</status>
+  <errmsg>OK</errmsg>
+  <interval>0</interval>
+    <entry type="predatasource">
+        <version>1543271487</version>
+        <name>SQL query to widget</name>
+        <displayedas>SQL query to widget</displayedas>
+        <description>By Mike Suding.  Displays SQL query result in a dashboard text widget. Query and other settings are variables in script or properties.</description>
+        <collector>script</collector>
+        <hasMultiInstances>false</hasMultiInstances>
+        <schedule>3600</schedule>
+        <appliesTo>SQL_to_widget</appliesTo>
+        <wildcardauto>false</wildcardauto>
+        <wildcardpersist>false</wildcardpersist>
+        <wildcardlinuxscript></wildcardlinuxscript>
+        <wildcardlinuxcmdline></wildcardlinuxcmdline>
+        <wildcardwinscript></wildcardwinscript>
+        <wildcardwincmdline></wildcardwincmdline>
+        <wildcardgroovyscript></wildcardgroovyscript>
+        <wildcardschedule>1440</wildcardschedule>
+        <wildcarddisable>false</wildcarddisable>
+        <wildcarddeleteinactive>false</wildcarddeleteinactive>
+        <agdmethod>none</agdmethod>
+        <agdparams></agdparams>
+        <group></group>
+        <tags></tags>
+        <technology>set several variables in script below
+Also set properties for API  lm.account, api.id, api.key</technology>
+        <adlist><![CDATA[{"agdmethod":"none","agdparams":"","id":0,"filters":[],"params":{}}]]></adlist>
+        <schemaVersion>2</schemaVersion>
+        <dataSourceType>1</dataSourceType>
+        <attributes>
+        <attribute>
+            <name>scripttype</name>
+            <value>embed</value>
+            <comment></comment>
+        </attribute>
+        <attribute>
+            <name>scriptgroovy</name>
+            <value>int LM_DashBoardId       = 397  //see video - this shows in URL
+int LM_WidgetId          = 2712 //see video - this shows in &#39;embed URL&#39; under &#39;configure&#39;
+String LM_WidgetName     = &#34;SQL results shown in text widget&#34;
+int LM_WidgetCharLimit   = 65535
+String color_scheme      = &#34;solidGray&#34;
+String text_before_table = &#34;Optional text before the table&#34;
+String text_after_table  = &#34;Optional text after the table&#34;
+String font_family       = &#34;Arial&#34;
+String font_size         = &#34;20px&#34;
+String[] alignment_array = [&#34;left&#34;,&#34;center&#34;,&#34;right&#34;,&#34;center&#34;] // the alignment setting for each column
+String SQL_Query    = &#34;select top 466 CustomerID, StoreID, TerritoryID, ModifiedDate from Sales.Customer&#34;
+String SQL_Instance = &#34;MSSQLSERVER&#34;
+String SQL_Database = &#34;AdventureWorks2014&#34;
+// ===========( set variables above )================
+// to hide gridlines, change &#39;border&#39; to 0px below
+
+String LM_Account   = hostProps.get(&#34;lm.account&#34;)
+String LM_AccessId  = hostProps.get(&#34;api.id&#34;)
+String LM_AccessKey = hostProps.get(&#34;api.key&#34;)
+
+String SQL_Server   = hostProps.get(&#34;system.hostname&#34;)
+String SQL_UserName = hostProps.get(&#34;jdbc.mssql.user&#34;)
+String SQL_Password = hostProps.get(&#34;jdbc.mssql.pass&#34;)
+String SQL_Driver = &#34;com.microsoft.sqlserver.jdbc.SQLServerDriver&#34;
+
+//Build connection string (set integrated security here)
+String Connection_String = &#39;jdbc:sqlserver://&#39; + SQL_Server + &#39;\\&#39; + SQL_Instance + &#39;;databaseName=&#39; + SQL_Database + &#39;;&#39;
+if (!(SQL_UserName &#38;&#38; SQL_Password))
+{
+    Connection_String += &#39;integratedSecurity=true;&#39;
+}
+
+import groovy.sql.Sql
+import groovy.xml.MarkupBuilder
+import org.apache.commons.codec.binary.Hex
+import org.apache.http.HttpResponse
+import org.apache.http.client.HttpClient
+import org.apache.http.client.methods.*
+import org.apache.http.entity.StringEntity
+import org.apache.http.impl.client.HttpClients
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
+
+ArrayList InvokeSqlQuery (String ConnectionString, String User, String Password, String Driver, String SqlQuery)
+{
+    Sql DbConnection = Sql.newInstance(ConnectionString, User, Password, Driver)
+    ArrayList ReturnedRows = DbConnection.rows(SqlQuery)
+    DbConnection.close()
+    return ReturnedRows
+}
+
+String GetHtmlContent (ArrayList InputObject, String[] alignment_array, String TablePrefix, String TablePostfix, String font_family, String font_size)
+{
+    StringWriter writer
+    MarkupBuilder markup
+    String HtmlMessage
+    ArrayList Headers = InputObject[0].keySet()
+
+    //Built map with Headers as a keys, align as a values.
+    LinkedHashMap HeadersAndAligns = new LinkedHashMap()
+    for (int i = 0; i &#60; Headers.size() &#38;&#38; i &#60; alignment_array.size(); i++)
+    {
+        HeadersAndAligns.&#34;${Headers[i]}&#34; = alignment_array[i]
+    }
+
+    writer = new StringWriter()
+    markup = new MarkupBuilder(new IndentPrinter(new PrintWriter(writer), &#34;&#34;, false))
+    markup.html{
+        head {
+            style(&#34;table, th, td {border: 1px solid black;border-collapse: collapse; font-size: ${font_size};} body {font-family: ${font_family}; font-size: ${font_size};&#34;)
+        }
+        body {
+            p (TablePrefix)
+            table (width:&#34;100%&#34; ){
+                tr {
+                    Headers.each {Header -&#62;
+                        td (align:&#34;${HeadersAndAligns.get(Header)}&#34;) {b &#34;$Header&#34;}
+                    }
+                }
+                InputObject.each{ SingleRow -&#62;
+                    tr {
+                        Headers.each { SingleKey -&#62;
+                            td (align:&#34;${HeadersAndAligns.get(SingleKey)}&#34;, SingleRow.&#34;$SingleKey&#34;)
+                        }
+                    }
+                }
+            }
+            p (TablePostfix)
+        }
+    }
+    HtmlMessage = writer.toString()
+    return HtmlMessage
+}
+
+String GetHtmlError (String ErrorText, String font_family, String font_size)
+{
+    StringWriter writer
+    MarkupBuilder markup
+    String HtmlMessage
+    writer = new StringWriter()
+    markup = new MarkupBuilder(new IndentPrinter(new PrintWriter(writer), &#34;&#34;, false))
+    markup.html {
+        head {
+            style(&#34;body {font-family: ${font_family}; font-size: ${font_size};&#34;)
+        }
+
+        body {
+            p(ErrorText)
+        }
+    }
+    HtmlMessage = writer.toString()
+    return HtmlMessage
+}
+
+int SetWidget (String Account, String AccessId, String AccessKey, int DashboardId, int WidgetId, String WidgetName, String WidgetColor, String WidgetBody)
+{
+    String ResourcePath = &#34;/dashboard/widgets/$WidgetId&#34;
+    String Url = &#34;https://&#34; + Account + &#34;.logicmonitor.com&#34; + &#34;/santaba/rest&#34; + ResourcePath
+    long epoch = System.currentTimeMillis()
+    String UpdateData = &#39;{&#34;name&#34;:&#34;&#39; + WidgetName + &#39;&#34;,&#34;dashboardId&#34;:&#39; + DashboardId + &#39;,&#34;type&#34;:&#34;text&#34;,&#34;theme&#34;:&#34;&#39; + WidgetColor + &#39;&#34;,&#34;content&#34;:&#34;&#39; + WidgetBody + &#39;&#34;}&#39;
+    StringEntity EntityData = new StringEntity(UpdateData)
+    String RequestVars = &#34;PUT&#34; + epoch.toString() + UpdateData + ResourcePath
+    Mac hmac = Mac.getInstance(&#34;HmacSHA256&#34;)
+    SecretKeySpec secret = new SecretKeySpec(AccessKey.getBytes(), &#34;HmacSHA256&#34;)
+    hmac.init(secret)
+    String hmac_signed = Hex.encodeHexString(hmac.doFinal(RequestVars.getBytes()))
+    String signature = hmac_signed.bytes.encodeBase64()
+    HttpClient httpclient = HttpClients.createDefault()
+    HttpPut httpPut = new HttpPut(Url)
+    httpPut.addHeader(&#34;Authorization&#34; , &#34;LMv1 &#34; + AccessId + &#34;:&#34; + signature + &#34;:&#34; + epoch)
+    httpPut.setHeader(&#34;Accept&#34;, &#34;application/json&#34;)
+    httpPut.setHeader(&#34;Content-type&#34;, &#34;application/json&#34;)
+    httpPut.setEntity(EntityData)
+    HttpResponse httpResponse = httpclient.execute(httpPut)
+    int responseCode = httpResponse.getStatusLine().getStatusCode()
+    httpclient.close()
+    return responseCode
+}
+
+int DataSetLength, WidgetTextLength, HttpResponseCode, ExitStatus = 0
+String WidgetText
+
+ArrayList DataSet = InvokeSqlQuery (Connection_String, SQL_UserName, SQL_Password, SQL_Driver, SQL_Query)
+DataSetLength = DataSet.size()
+
+if (DataSetLength == 0)
+{
+    WidgetText = GetHtmlError(&#34;SQL query returned 0 rows&#34;, font_family, font_size)
+    WidgetTextLength = 0
+    ExitStatus = 2
+} else {
+    WidgetText = GetHtmlContent (DataSet, alignment_array, text_before_table, text_after_table, font_family, font_size)
+    WidgetTextLength = WidgetText.size()
+    if (WidgetTextLength &#62; LM_WidgetCharLimit)
+    {
+        WidgetText = GetHtmlError(&#34;Sorry, 65,535 character limit exceeded. Please change SQL query.&#34;, font_family, font_size)
+        ExitStatus = 1
+    }
+}
+
+HttpResponseCode = SetWidget(LM_Account, LM_AccessId, LM_AccessKey, LM_DashBoardId, LM_WidgetId, LM_WidgetName, color_scheme, WidgetText)
+
+println &#34;rows_returned=${DataSetLength}&#34;
+println &#34;html_length=${WidgetTextLength}&#34;
+println &#34;http_response_code=${HttpResponseCode}&#34;
+//println &#34;ExitStatus=${ExitStatus}&#34;</value>
+            <comment></comment>
+        </attribute>
+        <attribute>
+            <name>windowsscript</name>
+            <value></value>
+            <comment></comment>
+        </attribute>
+        <attribute>
+            <name>linuxscript</name>
+            <value></value>
+            <comment></comment>
+        </attribute>
+        <attribute>
+            <name>windowscmdline</name>
+            <value></value>
+            <comment></comment>
+        </attribute>
+        <attribute>
+            <name>linuxcmdline</name>
+            <value></value>
+            <comment></comment>
+        </attribute>
+        </attributes>
+        <datapoints>
+        <datapoint>
+            <name>exit_code</name>
+            <dataType>4</dataType>
+            <type>2</type>
+            <postprocessormethod>none</postprocessormethod>
+            <postprocessorparam></postprocessorparam>
+            <usevalue>exitCode</usevalue>
+            <alertexpr></alertexpr>
+            <alertmissing>1</alertmissing>
+            <alertsubject></alertsubject>
+            <alertbody></alertbody>
+            <description>0=good</description>
+            <maxvalue></maxvalue>
+            <minvalue></minvalue>
+            <userparam1></userparam1>
+            <userparam2></userparam2>
+            <userparam3></userparam3>
+            <iscomposite>false</iscomposite>
+            <rpn></rpn>
+            <alertTransitionIval>0</alertTransitionIval>
+            <alertClearTransitionIval>0</alertClearTransitionIval>
+        </datapoint>
+        <datapoint>
+            <name>html_length</name>
+            <dataType>7</dataType>
+            <type>2</type>
+            <postprocessormethod>regex</postprocessormethod>
+            <postprocessorparam>html_length=(\d+)</postprocessorparam>
+            <usevalue>output</usevalue>
+            <alertexpr>&#62; 65535 timezone=America/Los_Angeles</alertexpr>
+            <alertmissing>1</alertmissing>
+            <alertsubject></alertsubject>
+            <alertbody></alertbody>
+            <description>Currently the limit for text widgets is 65,535 and this includes the HTML tags</description>
+            <maxvalue></maxvalue>
+            <minvalue></minvalue>
+            <userparam1></userparam1>
+            <userparam2></userparam2>
+            <userparam3></userparam3>
+            <iscomposite>false</iscomposite>
+            <rpn></rpn>
+            <alertTransitionIval>0</alertTransitionIval>
+            <alertClearTransitionIval>0</alertClearTransitionIval>
+        </datapoint>
+        <datapoint>
+            <name>ms_it_took</name>
+            <dataType>4</dataType>
+            <type>2</type>
+            <postprocessormethod>none</postprocessormethod>
+            <postprocessorparam></postprocessorparam>
+            <usevalue>responseTime</usevalue>
+            <alertexpr>&#62; 55777 timezone=America/Los_Angeles</alertexpr>
+            <alertmissing>1</alertmissing>
+            <alertsubject></alertsubject>
+            <alertbody></alertbody>
+            <description></description>
+            <maxvalue></maxvalue>
+            <minvalue></minvalue>
+            <userparam1></userparam1>
+            <userparam2></userparam2>
+            <userparam3></userparam3>
+            <iscomposite>false</iscomposite>
+            <rpn></rpn>
+            <alertTransitionIval>0</alertTransitionIval>
+            <alertClearTransitionIval>0</alertClearTransitionIval>
+        </datapoint>
+        <datapoint>
+            <name>rows_returned</name>
+            <dataType>7</dataType>
+            <type>2</type>
+            <postprocessormethod>regex</postprocessormethod>
+            <postprocessorparam>rows_returned=(\d+)</postprocessorparam>
+            <usevalue>output</usevalue>
+            <alertexpr></alertexpr>
+            <alertmissing>1</alertmissing>
+            <alertsubject></alertsubject>
+            <alertbody></alertbody>
+            <description>The SQL results has this many rows</description>
+            <maxvalue></maxvalue>
+            <minvalue></minvalue>
+            <userparam1></userparam1>
+            <userparam2></userparam2>
+            <userparam3></userparam3>
+            <iscomposite>false</iscomposite>
+            <rpn></rpn>
+            <alertTransitionIval>0</alertTransitionIval>
+            <alertClearTransitionIval>0</alertClearTransitionIval>
+        </datapoint>
+        </datapoints>
+        <graphs>
+        <graph>
+            <name>Active Transactions</name>
+            <title>Active Transactions</title>
+            <verticallabel>#</verticallabel>
+            <rigid>false</rigid>
+            <maxvalue>NaN</maxvalue>
+            <minvalue>0.0</minvalue>
+            <displayprio>3</displayprio>
+            <timescale>1day</timescale>
+            <base1024>false</base1024>
+            <graphdatapoints>
+            </graphdatapoints>
+            <graphvirtualdatapoints>
+            </graphvirtualdatapoints>
+            <graphdatas>
+            </graphdatas>
+        </graph>
+        <graph>
+            <name>Backup Restore Throughput</name>
+            <title>Backup Restore Throughput</title>
+            <verticallabel>bytes</verticallabel>
+            <rigid>false</rigid>
+            <maxvalue>NaN</maxvalue>
+            <minvalue>0.0</minvalue>
+            <displayprio>12</displayprio>
+            <timescale>1day</timescale>
+            <base1024>true</base1024>
+            <graphdatapoints>
+            </graphdatapoints>
+            <graphvirtualdatapoints>
+            </graphvirtualdatapoints>
+            <graphdatas>
+            </graphdatas>
+        </graph>
+        <graph>
+            <name>Bulk Copy Rows</name>
+            <title>Bulk Copy Rows</title>
+            <verticallabel>rows/sec</verticallabel>
+            <rigid>false</rigid>
+            <maxvalue>NaN</maxvalue>
+            <minvalue>0.0</minvalue>
+            <displayprio>22</displayprio>
+            <timescale>1day</timescale>
+            <base1024>false</base1024>
+            <graphdatapoints>
+            </graphdatapoints>
+            <graphvirtualdatapoints>
+            </graphvirtualdatapoints>
+            <graphdatas>
+            </graphdatas>
+        </graph>
+        <graph>
+            <name>Bulk Copy Throughput</name>
+            <title>Bulk Copy Throughput</title>
+            <verticallabel>bytes/sec</verticallabel>
+            <rigid>false</rigid>
+            <maxvalue>NaN</maxvalue>
+            <minvalue>0.0</minvalue>
+            <displayprio>23</displayprio>
+            <timescale>1day</timescale>
+            <base1024>true</base1024>
+            <graphdatapoints>
+            </graphdatapoints>
+            <graphvirtualdatapoints>
+            </graphvirtualdatapoints>
+            <graphdatas>
+            </graphdatas>
+        </graph>
+        <graph>
+            <name>Data File</name>
+            <title>Data File</title>
+            <verticallabel>bytes</verticallabel>
+            <rigid>false</rigid>
+            <maxvalue>NaN</maxvalue>
+            <minvalue>0.0</minvalue>
+            <displayprio>10</displayprio>
+            <timescale>1day</timescale>
+            <base1024>false</base1024>
+            <graphdatapoints>
+            </graphdatapoints>
+            <graphvirtualdatapoints>
+            </graphvirtualdatapoints>
+            <graphdatas>
+            </graphdatas>
+        </graph>
+        <graph>
+            <name>Database Backup</name>
+            <title>Database Backup</title>
+            <verticallabel>hour(s)</verticallabel>
+            <rigid>false</rigid>
+            <maxvalue>NaN</maxvalue>
+            <minvalue>0.0</minvalue>
+            <displayprio>4</displayprio>
+            <timescale>1day</timescale>
+            <base1024>false</base1024>
+            <graphdatapoints>
+            </graphdatapoints>
+            <graphvirtualdatapoints>
+            </graphvirtualdatapoints>
+            <graphdatas>
+            </graphdatas>
+        </graph>
+        <graph>
+            <name>Log File</name>
+            <title>Log File</title>
+            <verticallabel>bytes</verticallabel>
+            <rigid>false</rigid>
+            <maxvalue>NaN</maxvalue>
+            <minvalue>0.0</minvalue>
+            <displayprio>9</displayprio>
+            <timescale>1day</timescale>
+            <base1024>true</base1024>
+            <graphdatapoints>
+            </graphdatapoints>
+            <graphvirtualdatapoints>
+            </graphvirtualdatapoints>
+            <graphdatas>
+            </graphdatas>
+        </graph>
+        <graph>
+            <name>Log File Utilization</name>
+            <title>Log File Utilization</title>
+            <verticallabel>%</verticallabel>
+            <rigid>false</rigid>
+            <maxvalue>100.0</maxvalue>
+            <minvalue>0.0</minvalue>
+            <displayprio>9</displayprio>
+            <timescale>1day</timescale>
+            <base1024>false</base1024>
+            <graphdatapoints>
+            </graphdatapoints>
+            <graphvirtualdatapoints>
+            </graphvirtualdatapoints>
+            <graphdatas>
+            </graphdatas>
+        </graph>
+        <graph>
+            <name>Log Flush Latency</name>
+            <title>Log Flush Latency</title>
+            <verticallabel>milliseconds</verticallabel>
+            <rigid>false</rigid>
+            <maxvalue>NaN</maxvalue>
+            <minvalue>0.0</minvalue>
+            <displayprio>7</displayprio>
+            <timescale>1day</timescale>
+            <base1024>false</base1024>
+            <graphdatapoints>
+            </graphdatapoints>
+            <graphvirtualdatapoints>
+            </graphvirtualdatapoints>
+            <graphdatas>
+            </graphdatas>
+        </graph>
+        <graph>
+            <name>Log Flush Throughput</name>
+            <title>Log Flush Throughput</title>
+            <verticallabel>bytes</verticallabel>
+            <rigid>false</rigid>
+            <maxvalue>NaN</maxvalue>
+            <minvalue>0.0</minvalue>
+            <displayprio>6</displayprio>
+            <timescale>1day</timescale>
+            <base1024>true</base1024>
+            <graphdatapoints>
+            </graphdatapoints>
+            <graphvirtualdatapoints>
+            </graphvirtualdatapoints>
+            <graphdatas>
+            </graphdatas>
+        </graph>
+        <graph>
+            <name>Log Operations</name>
+            <title>Log Operations</title>
+            <verticallabel>operations/sec</verticallabel>
+            <rigid>false</rigid>
+            <maxvalue>NaN</maxvalue>
+            <minvalue>0.0</minvalue>
+            <displayprio>4</displayprio>
+            <timescale>1day</timescale>
+            <base1024>false</base1024>
+            <graphdatapoints>
+            </graphdatapoints>
+            <graphvirtualdatapoints>
+            </graphvirtualdatapoints>
+            <graphdatas>
+            </graphdatas>
+        </graph>
+        <graph>
+            <name>Log Pool Cache Miss</name>
+            <title>Log Pool Cache Miss</title>
+            <verticallabel>misses/sec</verticallabel>
+            <rigid>false</rigid>
+            <maxvalue>NaN</maxvalue>
+            <minvalue>0.0</minvalue>
+            <displayprio>6</displayprio>
+            <timescale>1day</timescale>
+            <base1024>false</base1024>
+            <graphdatapoints>
+            </graphdatapoints>
+            <graphvirtualdatapoints>
+            </graphvirtualdatapoints>
+            <graphdatas>
+            </graphdatas>
+        </graph>
+        <graph>
+            <name>Log Pool Disk Operations</name>
+            <title>Log Pool Disk Operations</title>
+            <verticallabel>operations/sec</verticallabel>
+            <rigid>false</rigid>
+            <maxvalue>NaN</maxvalue>
+            <minvalue>0.0</minvalue>
+            <displayprio>5</displayprio>
+            <timescale>1day</timescale>
+            <base1024>false</base1024>
+            <graphdatapoints>
+            </graphdatapoints>
+            <graphvirtualdatapoints>
+            </graphvirtualdatapoints>
+            <graphdatas>
+            </graphdatas>
+        </graph>
+        <graph>
+            <name>Log Pool Requests</name>
+            <title>Log Pool Requests</title>
+            <verticallabel>requests/sec</verticallabel>
+            <rigid>false</rigid>
+            <maxvalue>NaN</maxvalue>
+            <minvalue>0.0</minvalue>
+            <displayprio>5</displayprio>
+            <timescale>1day</timescale>
+            <base1024>false</base1024>
+            <graphdatapoints>
+            </graphdatapoints>
+            <graphvirtualdatapoints>
+            </graphvirtualdatapoints>
+            <graphdatas>
+            </graphdatas>
+        </graph>
+        <graph>
+            <name>Operating State</name>
+            <title>Operating State</title>
+            <verticallabel>status code</verticallabel>
+            <rigid>false</rigid>
+            <maxvalue>11.0</maxvalue>
+            <minvalue>-1.0</minvalue>
+            <displayprio>1</displayprio>
+            <timescale>1day</timescale>
+            <base1024>false</base1024>
+            <graphdatapoints>
+            </graphdatapoints>
+            <graphvirtualdatapoints>
+            </graphvirtualdatapoints>
+            <graphdatas>
+            </graphdatas>
+        </graph>
+        <graph>
+            <name>Replication Transactions</name>
+            <title>Replication Transactions</title>
+            <verticallabel>transactions/sec</verticallabel>
+            <rigid>false</rigid>
+            <maxvalue>NaN</maxvalue>
+            <minvalue>0.0</minvalue>
+            <displayprio>8</displayprio>
+            <timescale>1day</timescale>
+            <base1024>false</base1024>
+            <graphdatapoints>
+            </graphdatapoints>
+            <graphvirtualdatapoints>
+            </graphvirtualdatapoints>
+            <graphdatas>
+            </graphdatas>
+        </graph>
+        <graph>
+            <name>Snapshot Isolation State</name>
+            <title>Snapshot Isolation State</title>
+            <verticallabel>status code</verticallabel>
+            <rigid>false</rigid>
+            <maxvalue>NaN</maxvalue>
+            <minvalue>0.0</minvalue>
+            <displayprio>20</displayprio>
+            <timescale>1day</timescale>
+            <base1024>false</base1024>
+            <graphdatapoints>
+            </graphdatapoints>
+            <graphvirtualdatapoints>
+            </graphvirtualdatapoints>
+            <graphdatas>
+            </graphdatas>
+        </graph>
+        <graph>
+            <name>Synchronization State</name>
+            <title>Synchronization State</title>
+            <verticallabel>status code</verticallabel>
+            <rigid>false</rigid>
+            <maxvalue>11.0</maxvalue>
+            <minvalue>-1.0</minvalue>
+            <displayprio>2</displayprio>
+            <timescale>1day</timescale>
+            <base1024>false</base1024>
+            <graphdatapoints>
+            </graphdatapoints>
+            <graphvirtualdatapoints>
+            </graphvirtualdatapoints>
+            <graphdatas>
+            </graphdatas>
+        </graph>
+        <graph>
+            <name>Target Recovery Time</name>
+            <title>Target Recovery Time</title>
+            <verticallabel>second(s)</verticallabel>
+            <rigid>false</rigid>
+            <maxvalue>NaN</maxvalue>
+            <minvalue>0.0</minvalue>
+            <displayprio>20</displayprio>
+            <timescale>1day</timescale>
+            <base1024>false</base1024>
+            <graphdatapoints>
+            </graphdatapoints>
+            <graphvirtualdatapoints>
+            </graphvirtualdatapoints>
+            <graphdatas>
+            </graphdatas>
+        </graph>
+        <graph>
+            <name>Transactions</name>
+            <title>Transactions</title>
+            <verticallabel>transactions/sec</verticallabel>
+            <rigid>false</rigid>
+            <maxvalue>NaN</maxvalue>
+            <minvalue>0.0</minvalue>
+            <displayprio>3</displayprio>
+            <timescale>1day</timescale>
+            <base1024>false</base1024>
+            <graphdatapoints>
+            </graphdatapoints>
+            <graphvirtualdatapoints>
+            </graphvirtualdatapoints>
+            <graphdatas>
+            </graphdatas>
+        </graph>
+        <graph>
+            <name>XTP Memory</name>
+            <title>XTP Memory</title>
+            <verticallabel>bytes</verticallabel>
+            <rigid>false</rigid>
+            <maxvalue>NaN</maxvalue>
+            <minvalue>0.0</minvalue>
+            <displayprio>11</displayprio>
+            <timescale>1day</timescale>
+            <base1024>true</base1024>
+            <graphdatapoints>
+            </graphdatapoints>
+            <graphvirtualdatapoints>
+            </graphvirtualdatapoints>
+            <graphdatas>
+            </graphdatas>
+        </graph>
+        </graphs>
+        <overviewgraphs>
+        </overviewgraphs>
+        <scripts>
+        </scripts>
+    </entry>
+</feed>
